@@ -3,6 +3,88 @@ import { News, INews } from '../models/news.model';
 import { NewsInput, NewsUpdateInput, NewsQueryInput } from '../schemas/news.schema';
 
 export class NewsService {
+  // ==============================================
+  // MÉTODOS PARA ACESSO PÚBLICO
+  // ==============================================
+  
+  // Buscar notícia por ID (apenas publicadas)
+  async getPublicNewsById(id: string): Promise<INews | null> {
+    try {
+      // Buscar notícia e garantir que seja publicada
+      return await News.findOne({ _id: id, published: true })
+        .populate('author', 'name')
+        .lean();
+    } catch (error) {
+      console.error('Erro no serviço ao buscar notícia pública por ID:', error);
+      throw error;
+    }
+  }
+
+  // Listar notícias públicas com paginação e filtros (apenas publicadas)
+  async getPublicNewsList(query: NewsQueryInput) {
+    try {
+      const { page = 1, limit = 10, tag, search } = query;
+      
+      // Construir filtros - apenas notícias publicadas
+      const filter: any = { published: true };
+      
+      // Filtrar por tag se fornecida
+      if (tag) {
+        filter.tags = tag;
+      }
+      
+      // Busca por texto se fornecida
+      if (search) {
+        filter.$text = { $search: search };
+      }
+
+      // Calcular skip para paginação
+      const skip = (page - 1) * limit;
+
+      // Buscar notícias
+      const news = await News.find(filter)
+        .populate('author', 'name')
+        .sort({ publishDate: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      // Contar total para paginação
+      const total = await News.countDocuments(filter);
+
+      return {
+        news,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
+    } catch (error) {
+      console.error('Erro no serviço ao listar notícias públicas:', error);
+      throw error;
+    }
+  }
+  
+  // Obter notícias recentes (apenas publicadas)
+  async getLatestNews(limit: number = 3): Promise<INews[]> {
+    try {
+      return await News.find({ published: true })
+        .populate('author', 'name')
+        .sort({ publishDate: -1 })
+        .limit(limit)
+        .lean();
+    } catch (error) {
+      console.error('Erro no serviço ao buscar notícias recentes:', error);
+      throw error;
+    }
+  }
+
+  // ==============================================
+  // MÉTODOS PARA ACESSO ADMINISTRATIVO
+  // ==============================================
+  
   // Criar nova notícia
   async createNews(newsData: NewsInput, authorId: string): Promise<INews> {
     try {
@@ -47,7 +129,7 @@ export class NewsService {
     }
   }
 
-  // Buscar notícia por ID
+  // Buscar notícia por ID (para administração, com acesso a não publicadas)
   async getNewsById(id: string): Promise<INews | null> {
     try {
       return await News.findById(id).populate('author', 'name');
@@ -57,17 +139,17 @@ export class NewsService {
     }
   }
 
-  // Listar notícias com paginação e filtros
-  async getNewsList(query: NewsQueryInput, onlyPublished: boolean = true) {
+  // Listar notícias com paginação e filtros (para administração)
+  async getAdminNewsList(query: NewsQueryInput, filterPublished: boolean = false) {
     try {
       const { page = 1, limit = 10, tag, search } = query;
       
       // Construir filtros
       const filter: any = {};
       
-      // Apenas notícias publicadas (para acesso público)
-      if (onlyPublished) {
-        filter.published = true;
+      // Filtrar por status de publicação se solicitado
+      if (filterPublished !== undefined) {
+        filter.published = filterPublished;
       }
       
       // Filtrar por tag
@@ -104,7 +186,7 @@ export class NewsService {
         }
       };
     } catch (error) {
-      console.error('Erro no serviço ao listar notícias:', error);
+      console.error('Erro no serviço ao listar notícias para administração:', error);
       throw error;
     }
   }
@@ -112,11 +194,20 @@ export class NewsService {
   // Listar notícias de um autor específico
   async getNewsByAuthor(authorId: string, query: NewsQueryInput) {
     try {
-      const { page = 1, limit = 10 } = query;
+      const { page = 1, limit = 10, tag, search } = query;
       const skip = (page - 1) * limit;
 
       // Filtrar por autor
-      const filter = { author: new mongoose.Types.ObjectId(authorId) };
+      const filter: any = { author: new mongoose.Types.ObjectId(authorId) };
+
+      // Filtros adicionais se fornecidos
+      if (tag) {
+        filter.tags = tag;
+      }
+      
+      if (search) {
+        filter.$text = { $search: search };
+      }
 
       // Buscar notícias do usuário
       const news = await News.find(filter)

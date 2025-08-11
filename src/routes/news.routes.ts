@@ -13,7 +13,9 @@ import { newsSchema, newsUpdateSchema, newsQuerySchema } from '../schemas/news.s
 import { zodToJsonSchema } from '../utils/schema.utils';
 
 export default async function newsRoutes(fastify: FastifyInstance) {
-  // Rotas públicas
+  // =============================================
+  // ROTAS PÚBLICAS (sem autenticação)
+  // =============================================
   
   // Listar notícias (com paginação e filtros)
   fastify.get('/', {
@@ -45,7 +47,9 @@ export default async function newsRoutes(fastify: FastifyInstance) {
     handler: getNewsById
   });
 
-  // Rotas protegidas (requerem autenticação)
+  // =============================================
+  // ROTAS PROTEGIDAS (requerem autenticação)
+  // =============================================
 
   // Criar nova notícia
   fastify.post('/', {
@@ -116,7 +120,7 @@ export default async function newsRoutes(fastify: FastifyInstance) {
     handler: deleteNews
   });
 
-  // Listar minhas notícias
+  // Listar minhas notícias (do usuário logado)
   fastify.get('/my', {
     preHandler: [authenticate],
     schema: {

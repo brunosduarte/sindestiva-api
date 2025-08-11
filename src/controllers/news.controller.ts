@@ -12,6 +12,10 @@ interface AuthRequest extends FastifyRequest {
   };
 }
 
+// =================================================
+// CONTROLADORES PARA ROTAS PROTEGIDAS (ADMIN)
+// =================================================
+
 // Criar nova notícia
 export const createNews = async (
   request: AuthRequest & { Body: NewsInput },
@@ -119,7 +123,61 @@ export const deleteNews = async (
   }
 };
 
-// Buscar notícia por ID
+// Listar notícias do usuário autenticado (incluindo não publicadas)
+export const getMyNews = async (
+  request: AuthRequest & { Querystring: NewsQueryInput },
+  reply: FastifyReply
+) => {
+  try {
+    if (!request.user) {
+      return reply.status(401).send({ message: 'Usuário não autenticado' });
+    }
+
+    const { page = 1, limit = 10, search, tag } = request.query;
+    const skip = (page - 1) * limit;
+
+    // Filtrar por autor
+    const filter: any = { author: new mongoose.Types.ObjectId(request.user._id) };
+    
+    // Adicionar filtros adicionais se fornecidos
+    if (tag) {
+      filter.tags = tag;
+    }
+    
+    if (search) {
+      filter.$text = { $search: search };
+    }
+
+    // Buscar notícias do usuário
+    const newsList = await News.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Contar total para paginação
+    const total = await News.countDocuments(filter);
+
+    return reply.status(200).send({
+      news: newsList,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao listar minhas notícias:', error);
+    return reply.status(500).send({ message: 'Erro ao listar minhas notícias' });
+  }
+};
+
+// =================================================
+// CONTROLADORES PARA ROTAS PÚBLICAS
+// =================================================
+
+// Buscar notícia por ID (somente publicadas)
 export const getNewsById = async (
   request: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply
@@ -144,7 +202,7 @@ export const getNewsById = async (
   }
 };
 
-// Listar notícias com paginação e filtros
+// Listar notícias com paginação e filtros (somente publicadas)
 export const getNewsList = async (
   request: FastifyRequest<{ Querystring: NewsQueryInput }>,
   reply: FastifyReply
@@ -152,9 +210,10 @@ export const getNewsList = async (
   try {
     const { page = 1, limit = 10, tag, search } = request.query;
 
-    // Construir filtros
+    // Construir filtros - sempre mostrar apenas publicadas
     const filter: any = { published: true };
     
+    // Adicionar filtros adicionais se fornecidos
     if (tag) {
       filter.tags = tag;
     }
@@ -189,46 +248,5 @@ export const getNewsList = async (
   } catch (error) {
     console.error('Erro ao listar notícias:', error);
     return reply.status(500).send({ message: 'Erro ao listar notícias' });
-  }
-};
-
-// Listar notícias do usuário autenticado (incluindo não publicadas)
-export const getMyNews = async (
-  request: AuthRequest & { Querystring: NewsQueryInput },
-  reply: FastifyReply
-) => {
-  try {
-    if (!request.user) {
-      return reply.status(401).send({ message: 'Usuário não autenticado' });
-    }
-
-    const { page = 1, limit = 10 } = request.query;
-    const skip = (page - 1) * limit;
-
-    // Filtrar por autor
-    const filter = { author: new mongoose.Types.ObjectId(request.user._id) };
-
-    // Buscar notícias do usuário
-    const newsList = await News.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    // Contar total para paginação
-    const total = await News.countDocuments(filter);
-
-    return reply.status(200).send({
-      news: newsList,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Erro ao listar minhas notícias:', error);
-    return reply.status(500).send({ message: 'Erro ao listar minhas notícias' });
   }
 };

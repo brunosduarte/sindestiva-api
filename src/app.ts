@@ -27,10 +27,14 @@ const app: FastifyInstance = fastify({
 // Registrar plugins
 const startApp = async () => {
   try {
-    // Configurar CORS
+    // Configurar CORS - permitir acesso de origens específicas
     await app.register(cors, {
-      origin: true,
-      credentials: true
+      origin: [
+        'http://localhost:3000',              // Frontend de desenvolvimento
+        process.env.FRONTEND_URL || '*',      // Frontend de produção (ou qualquer origem se não configurada)
+      ],
+      credentials: true,                      // Permitir cookies e cabeçalhos de autenticação
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
     });
 
     // Configurar JWT
@@ -46,7 +50,7 @@ const startApp = async () => {
       request.jwt = app.jwt;
     });
 
-    // Configurar Swagger
+    // Configurar Swagger para documentação da API
     await app.register(swagger, {
       swagger: {
         info: {
@@ -69,7 +73,11 @@ const startApp = async () => {
     });
 
     await app.register(swaggerUi, {
-      routePrefix: '/documentation'
+      routePrefix: '/documentation',
+      uiConfig: {
+        docExpansion: 'list',
+        deepLinking: true
+      }
     });
 
     // Conectar ao MongoDB
@@ -79,9 +87,14 @@ const startApp = async () => {
     app.register(authRoutes, { prefix: '/api/auth' });
     app.register(newsRoutes, { prefix: '/api/news' });
 
-    // Rota de saúde
+    // Rota de saúde para verificar se a API está funcionando
     app.get('/health', async (request, reply) => {
-      return reply.send({ status: 'ok' });
+      return reply.send({ 
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        version: '1.0.0'
+      });
     });
 
     // Tratamento de erros global
@@ -106,6 +119,17 @@ const startApp = async () => {
         });
       }
 
+      // Erros de MongoDB
+      if (error.name === 'MongoError' || error.name === 'MongoServerError') {
+        if (error.code === 11000) {
+          return reply.status(409).send({
+            message: 'Conflito de dados',
+            error: 'Já existe um registro com esses dados'
+          });
+        }
+      }
+
+      // Erro interno do servidor (não expor detalhes em produção)
       reply.status(500).send({
         message: 'Erro interno do servidor',
         error: process.env.NODE_ENV === 'production' ? undefined : error
